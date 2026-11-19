@@ -6,7 +6,7 @@ DATA_DIR ?= ./data
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init build up down restart rebuild logs ps shell health dev test lint typecheck check db-shell backup restore stats mcp-add mcp-add-stdio mcp-inspect hooks-print clean nuke consolidate
+.PHONY: help init build up start down restart rebuild logs ps shell health dev test lint typecheck check db-shell backup restore stats mcp-add mcp-add-stdio mcp-inspect hooks-print clean nuke consolidate
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -27,11 +27,25 @@ up: ## Start the stack (builds if needed) and wait for healthcheck
 	done; \
 	echo "Server did not become healthy"; exit 1
 
+start: ## Start the stack and show the HTTP endpoint
+	$(MAKE) up
+	@echo "HTTP endpoint: http://127.0.0.1:$(PORT)"
+	@echo "MCP endpoint:  http://127.0.0.1:$(PORT)/mcp"
+
 down: ## Stop the stack, keep data
 	docker compose down
 
-restart: ## Restart the container (no rebuild)
+restart: ## Restart the container (no rebuild) and show the HTTP endpoint
 	docker compose restart
+	@for i in $$(seq 1 30); do \
+	  if curl -sf http://127.0.0.1:$(PORT)/health >/dev/null 2>&1; then \
+	    echo "HTTP endpoint: http://127.0.0.1:$(PORT)"; \
+	    echo "MCP endpoint:  http://127.0.0.1:$(PORT)/mcp"; \
+	    exit 0; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	echo "Server did not become healthy"; exit 1
 
 rebuild: ## Rebuild the image and recreate the container
 	$(MAKE) down
