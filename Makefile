@@ -1,8 +1,17 @@
 IMAGE ?= distill-mem-mcp
 CONTAINER ?= distill-mem
-PORT ?= 8787
 VOLUME ?= distill_data
 DATA_DIR ?= ./data
+
+-include .env
+
+ifndef PORT
+  ifdef DISTILL_PORT
+    PORT := $(DISTILL_PORT)
+  else
+    PORT := 8787
+  endif
+endif
 
 .DEFAULT_GOAL := help
 

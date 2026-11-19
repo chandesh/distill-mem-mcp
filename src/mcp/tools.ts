@@ -4,7 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { getConfig } from '../config.js';
-import { getEntityDetails, logTokenLedger, search } from '../core/retrieve.js';
+import { getEntityDetails, search } from '../core/retrieve.js';
 
 export function registerTools(server: McpServer, db: Database.Database, dbPath: string): void {
   const config = getConfig();

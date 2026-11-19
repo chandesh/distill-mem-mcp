@@ -4,7 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type Database from 'better-sqlite3';
 import express from 'express';
-import { getConfig, loadConfig } from './config.js';
+import { loadConfig } from './config.js';
 import { closeDb, openDb } from './db/index.js';
 import { createRouter } from './http/routes.js';
 import { registerTools } from './mcp/tools.js';

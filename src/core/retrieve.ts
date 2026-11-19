@@ -160,10 +160,10 @@ export function getEntityDetails(
 ): EntityDetail[] {
   const conditions: string[] = ['project = ?'];
   const args: unknown[] = [params.project];
-  if (params.ids && params.ids.length) {
+  if (params.ids?.length) {
     conditions.push(`id IN (${params.ids.map(() => '?').join(',')})`);
     args.push(...params.ids);
-  } else if (params.names && params.names.length) {
+  } else if (params.names?.length) {
     conditions.push(`name IN (${params.names.map(() => '?').join(',')})`);
     args.push(...params.names);
   } else {
@@ -391,7 +391,7 @@ export function buildContextMarkdown(
   }
 
   const markdown = sections.join('');
-  return { markdown, tokens: used, truncated: used < budget ? false : true };
+  return { markdown, tokens: used, truncated: used >= budget };
   // note: truncated flag approximated; fine.
 }
 
