@@ -1,0 +1,27 @@
+services:
+  distill-mem:
+    build: .
+    image: distill-mem-mcp:latest
+    container_name: distill-mem
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DISTILL_PORT:-8787}:8787"
+    environment:
+      - DISTILL_TRANSPORT=http
+      - DISTILL_HOST=0.0.0.0
+      - DISTILL_PORT=8787
+      - DISTILL_DB_PATH=/data/distill.db
+      - DISTILL_API_KEY=${DISTILL_API_KEY:-}
+      - DISTILL_DEFAULT_BUDGET=${DISTILL_DEFAULT_BUDGET:-1200}
+    volumes:
+      - ./data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
