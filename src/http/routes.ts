@@ -4,6 +4,7 @@ import express from 'express';
 import { getConfig } from '../config.js';
 import { cleanHookPayload, deriveProject } from '../core/capture.js';
 import { buildContextMarkdown, logTokenLedger } from '../core/retrieve.js';
+import { estimateTokens } from '../core/tokens.js';
 
 export function createRouter(db: Database.Database, dbPath: string): express.Router {
   const router = express.Router();
@@ -67,7 +68,24 @@ export function createRouter(db: Database.Database, dbPath: string): express.Rou
       db.prepare(
         `DELETE FROM events WHERE id NOT IN (SELECT id FROM events ORDER BY id DESC LIMIT ?)`,
       ).run(config.DISTILL_EVENT_RETENTION);
-      res.json({ accepted: true, id: Number(info.lastInsertRowid), ms: Date.now() - start });
+      const rawTokens = estimateTokens(JSON.stringify(raw));
+      const cleanedTokens = estimateTokens(JSON.stringify(cleaned.payload));
+      const savedTokens = Math.max(0, rawTokens - cleanedTokens);
+      logTokenLedger(db, {
+        project,
+        kind: 'capture',
+        tokensIn: rawTokens,
+        tokensOut: cleanedTokens,
+        note: `ingest cleaning (${cleaned.kind})`,
+      });
+      res.json({
+        accepted: true,
+        id: Number(info.lastInsertRowid),
+        ms: Date.now() - start,
+        rawTokens,
+        cleanedTokens,
+        savedTokens,
+      });
     } catch (err) {
       res.status(500).json({ error: String(err), ms: Date.now() - start });
     }
@@ -125,6 +143,9 @@ export function createRouter(db: Database.Database, dbPath: string): express.Rou
         `SELECT kind, SUM(tokens_in) AS ti, SUM(tokens_out) AS toks FROM token_ledger ${scope} GROUP BY kind`,
       )
       .all(...args) as Array<{ kind: string; ti: number; toks: number }>;
+    const savedRow = db
+      .prepare(`SELECT COALESCE(SUM(tokens_in - tokens_out), 0) AS s FROM token_ledger ${scope}`)
+      .get(...args) as { s: number };
     res.json({
       entities: entityCount,
       observations: obsCount,
@@ -132,6 +153,7 @@ export function createRouter(db: Database.Database, dbPath: string): express.Rou
       events: eventCount,
       dbSizeBytes: dbSize,
       ledger,
+      tokensSaved: savedRow.s,
     });
   });
 

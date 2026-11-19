@@ -259,6 +259,9 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
           `SELECT kind, SUM(tokens_in) AS ti, SUM(tokens_out) AS toks FROM token_ledger ${scope} GROUP BY kind`,
         )
         .all(...args) as Array<{ kind: string; ti: number; toks: number }>;
+      const savedRow = db
+        .prepare(`SELECT COALESCE(SUM(tokens_in - tokens_out), 0) AS s FROM token_ledger ${scope}`)
+        .get(...args) as { s: number };
       return {
         content: [
           {
@@ -270,6 +273,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
               events: eventCount,
               dbSizeBytes: dbSize,
               ledger,
+              tokensSaved: savedRow.s,
             }),
           },
         ],
