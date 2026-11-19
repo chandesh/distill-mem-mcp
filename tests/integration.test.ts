@@ -6,7 +6,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config.js';
 import { closeDb, openDb } from '../src/db/index.js';
 import { createRouter } from '../src/http/routes.js';
@@ -99,5 +99,24 @@ describe('integration', () => {
     const got = await client.callTool({ name: 'get', arguments: { project: 'p', names: ['Foo'] } });
     expect(JSON.stringify(got)).toContain('bar fact');
     await client.close();
+  });
+
+  it('logs a tool call to stderr with request and response token counts', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const client = new Client({ name: 'test-log', version: '1.0.0' });
+      const transport = new StreamableHTTPClientTransport(new URL(`${baseUrl}/mcp`));
+      await client.connect(transport);
+      await client.callTool({
+        name: 'search',
+        arguments: { project: 'p', query: 'Foo', limit: 5 },
+      });
+      await client.close();
+
+      const out = write.mock.calls.map((call) => String(call[0])).join('');
+      expect(out).toMatch(/\[mcp\] .* search in=\d+ out=\d+ ok req=.* res=/);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

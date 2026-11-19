@@ -5,6 +5,7 @@ import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { getConfig } from '../config.js';
 import { getEntityDetails, search } from '../core/retrieve.js';
+import { logged } from './log.js';
 
 export function registerTools(server: McpServer, db: Database.Database, dbPath: string): void {
   const config = getConfig();
@@ -23,7 +24,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         pinned: z.boolean().optional(),
       }),
     },
-    async (input) => {
+    logged('remember', async (input) => {
       const now = new Date().toISOString();
       const importance = input.importance ?? 0.5;
       // Upsert entity
@@ -74,7 +75,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
           },
         ],
       };
-    },
+    }),
   );
 
   server.registerTool(
@@ -88,7 +89,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         relation_type: z.string().min(1),
       }),
     },
-    async (input) => {
+    logged('relate', async (input) => {
       const fromRow = db
         .prepare('SELECT id FROM entities WHERE name = ? AND project = ?')
         .get(input.from, input.project) as { id: number } | undefined;
@@ -114,7 +115,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
           },
         ],
       };
-    },
+    }),
   );
 
   server.registerTool(
@@ -128,12 +129,12 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         limit: z.number().int().min(1).max(25).default(8),
       }),
     },
-    async (input) => {
+    logged('search', async (input) => {
       const hits = search(db, { query: input.query, project: input.project, limit: input.limit });
       return {
         content: [{ type: 'text', text: JSON.stringify({ results: hits, count: hits.length }) }],
       };
-    },
+    }),
   );
 
   server.registerTool(
@@ -148,7 +149,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         includeSuperseded: z.boolean().default(false),
       }),
     },
-    async (input) => {
+    logged('get', async (input) => {
       const details = getEntityDetails(db, {
         project: input.project,
         includeSuperseded: input.includeSuperseded,
@@ -156,7 +157,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         ...(input.names ? { names: input.names } : {}),
       });
       return { content: [{ type: 'text', text: JSON.stringify({ entities: details }) }] };
-    },
+    }),
   );
 
   server.registerTool(
@@ -169,12 +170,12 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         newObservationId: z.number().int(),
       }),
     },
-    async (input) => {
+    logged('supersede', async (input) => {
       const res = db
         .prepare('UPDATE observations SET superseded_by = ? WHERE id = ?')
         .run(input.newObservationId, input.oldObservationId);
       return { content: [{ type: 'text', text: JSON.stringify({ updated: res.changes > 0 }) }] };
-    },
+    }),
   );
 
   server.registerTool(
@@ -188,7 +189,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         hard: z.boolean().default(false),
       }),
     },
-    async (input) => {
+    logged('forget', async (input) => {
       let changed = 0;
       if (input.entityIds?.length) {
         if (input.hard) {
@@ -213,7 +214,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         }
       }
       return { content: [{ type: 'text', text: JSON.stringify({ changed }) }] };
-    },
+    }),
   );
 
   server.registerTool(
@@ -224,7 +225,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         project: z.string().optional(),
       }),
     },
-    async (input) => {
+    logged('stats', async (input) => {
       const project = input.project;
       const scope = project ? 'WHERE project = ?' : '';
       const args = project ? [project] : [];
@@ -278,7 +279,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
           },
         ],
       };
-    },
+    }),
   );
 
   // Touch config to avoid unused
