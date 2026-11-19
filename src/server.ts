@@ -7,6 +7,7 @@ import express from 'express';
 import { loadConfig } from './config.js';
 import { closeDb, openDb } from './db/index.js';
 import { createRouter } from './http/routes.js';
+import { installRpcErrorLogging } from './mcp/log.js';
 import { registerTools } from './mcp/tools.js';
 
 function parseArgs(argv: string[]): { transport?: 'http' | 'stdio' } {
@@ -31,6 +32,7 @@ async function handleMcp(
   const server = new McpServer({ name: 'distill-mem-mcp', version: '0.1.0' });
   registerTools(server, db, dbPath);
   const transport = new StreamableHTTPServerTransport({});
+  installRpcErrorLogging(transport, body);
   await server.connect(transport);
   try {
     await transport.handleRequest(req, res, body);

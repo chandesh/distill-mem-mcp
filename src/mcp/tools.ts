@@ -4,8 +4,21 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import { getConfig } from '../config.js';
+import { type EntityRef, resolveEntity } from '../core/resolve.js';
 import { getEntityDetails, search } from '../core/retrieve.js';
 import { logged } from './log.js';
+
+const OBSERVATION_REF_ERROR = 'observation refs must be numeric ids; call get to find the id';
+
+function errorResult(error: string): {
+  content: Array<{ type: 'text'; text: string }>;
+  isError: true;
+} {
+  return {
+    content: [{ type: 'text', text: JSON.stringify({ error }) }],
+    isError: true,
+  };
+}
 
 export function registerTools(server: McpServer, db: Database.Database, dbPath: string): void {
   const config = getConfig();
@@ -17,7 +30,7 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         'Create or update an entity and add atomic observations. Dedupes observations by content hash.',
       inputSchema: z.object({
         project: z.string().min(1),
-        name: z.string().min(1),
+        name: z.union([z.string().min(1), z.number().int()]),
         type: z.string().min(1),
         observations: z.array(z.string().min(1)).default([]),
         importance: z.number().min(0).max(1).optional(),
@@ -27,31 +40,53 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
     logged('remember', async (input) => {
       const now = new Date().toISOString();
       const importance = input.importance ?? 0.5;
-      // Upsert entity
-      const existing = db
-        .prepare('SELECT id FROM entities WHERE name = ? AND project = ?')
-        .get(input.name, input.project) as { id: number } | undefined;
       let entityId: number;
-      if (existing) {
-        db.prepare(
-          `UPDATE entities SET entity_type = ?, importance = ?, pinned = COALESCE(?, pinned),
-            updated_at = ? WHERE id = ?`,
-        ).run(
-          input.type,
-          importance,
-          input.pinned === undefined ? null : input.pinned ? 1 : 0,
-          now,
-          existing.id,
-        );
-        entityId = existing.id;
-      } else {
-        const res = db
+      let entityName: string;
+
+      if (typeof input.name === 'number') {
+        const resolved = resolveEntity(db, input.project, input.name);
+        if (!resolved.ok) return errorResult(resolved.error);
+        const row = db
           .prepare(
-            `INSERT INTO entities (name, entity_type, project, created_at, updated_at, importance, pinned)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `UPDATE entities SET entity_type = ?, importance = ?, pinned = COALESCE(?, pinned),
+             updated_at = ? WHERE id = ? RETURNING id, name`,
           )
-          .run(input.name, input.type, input.project, now, now, importance, input.pinned ? 1 : 0);
-        entityId = Number(res.lastInsertRowid);
+          .get(
+            input.type,
+            importance,
+            input.pinned === undefined ? null : input.pinned ? 1 : 0,
+            now,
+            resolved.id,
+          ) as { id: number; name: string } | undefined;
+        if (!row) return errorResult(`entity ${input.name} not found in project ${input.project}`);
+        entityId = row.id;
+        entityName = row.name;
+      } else {
+        const existing = db
+          .prepare('SELECT id FROM entities WHERE name = ? AND project = ?')
+          .get(input.name, input.project) as { id: number } | undefined;
+        if (existing) {
+          db.prepare(
+            `UPDATE entities SET entity_type = ?, importance = ?, pinned = COALESCE(?, pinned),
+              updated_at = ? WHERE id = ?`,
+          ).run(
+            input.type,
+            importance,
+            input.pinned === undefined ? null : input.pinned ? 1 : 0,
+            now,
+            existing.id,
+          );
+          entityId = existing.id;
+        } else {
+          const res = db
+            .prepare(
+              `INSERT INTO entities (name, entity_type, project, created_at, updated_at, importance, pinned)
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            )
+            .run(input.name, input.type, input.project, now, now, importance, input.pinned ? 1 : 0);
+          entityId = Number(res.lastInsertRowid);
+        }
+        entityName = input.name;
       }
 
       let added = 0;
@@ -67,11 +102,25 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
         else skipped += 1;
       }
 
+      const observationIds = (
+        db
+          .prepare('SELECT id FROM observations WHERE entity_id = ? ORDER BY id ASC')
+          .all(entityId) as Array<{
+          id: number;
+        }>
+      ).map((row) => row.id);
+
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ id: entityId, name: input.name, added, skipped }),
+            text: JSON.stringify({
+              id: entityId,
+              name: entityName,
+              added,
+              skipped,
+              observationIds,
+            }),
           },
         ],
       };
@@ -81,27 +130,19 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
   server.registerTool(
     'relate',
     {
-      description: 'Create a directed, active-voice relation between two entities.',
+      description: 'Relate two entities by id or name.',
       inputSchema: z.object({
         project: z.string().min(1),
-        from: z.string().min(1),
-        to: z.string().min(1),
+        from: z.union([z.string().min(1), z.number().int()]),
+        to: z.union([z.string().min(1), z.number().int()]),
         relation_type: z.string().min(1),
       }),
     },
     logged('relate', async (input) => {
-      const fromRow = db
-        .prepare('SELECT id FROM entities WHERE name = ? AND project = ?')
-        .get(input.from, input.project) as { id: number } | undefined;
-      const toRow = db
-        .prepare('SELECT id FROM entities WHERE name = ? AND project = ?')
-        .get(input.to, input.project) as { id: number } | undefined;
-      if (!fromRow || !toRow) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ error: 'entity not found' }) }],
-          isError: true,
-        };
-      }
+      const fromRow = resolveEntity(db, input.project, input.from as EntityRef);
+      if (!fromRow.ok) return errorResult(fromRow.error);
+      const toRow = resolveEntity(db, input.project, input.to as EntityRef);
+      if (!toRow.ok) return errorResult(toRow.error);
       const res = db
         .prepare(
           `INSERT OR IGNORE INTO relations (from_entity_id, to_entity_id, relation_type) VALUES (?, ?, ?)`,
@@ -141,20 +182,26 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
     'get',
     {
       description:
-        'Fetch full details for entity ids or names, including non-superseded observations and relations.',
+        'Fetch entities by id or name (ids/names interchangeable); includes observations.',
       inputSchema: z.object({
         project: z.string().min(1),
-        ids: z.array(z.number().int()).optional(),
-        names: z.array(z.string()).optional(),
+        ids: z.array(z.union([z.string().min(1), z.number().int()])).optional(),
+        names: z.array(z.union([z.string().min(1), z.number().int()])).optional(),
         includeSuperseded: z.boolean().default(false),
       }),
     },
     logged('get', async (input) => {
+      const refs = [...(input.ids ?? []), ...(input.names ?? [])] as EntityRef[];
+      const ids: number[] = [];
+      for (const ref of refs) {
+        const resolved = resolveEntity(db, input.project, ref);
+        if (!resolved.ok) return errorResult(resolved.error);
+        if (!ids.includes(resolved.id)) ids.push(resolved.id);
+      }
       const details = getEntityDetails(db, {
         project: input.project,
         includeSuperseded: input.includeSuperseded,
-        ...(input.ids ? { ids: input.ids } : {}),
-        ...(input.names ? { names: input.names } : {}),
+        ...(ids.length ? { ids } : {}),
       });
       return { content: [{ type: 'text', text: JSON.stringify({ entities: details }) }] };
     }),
@@ -163,14 +210,19 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
   server.registerTool(
     'supersede',
     {
-      description:
-        'Mark an observation as replaced by a newer one. Old kept for history, excluded by default.',
+      description: 'Mark an observation as replaced by a newer one. Observation ids only.',
       inputSchema: z.object({
-        oldObservationId: z.number().int(),
-        newObservationId: z.number().int(),
+        oldObservationId: z.union([z.number().int(), z.string()]),
+        newObservationId: z.union([z.number().int(), z.string()]),
       }),
     },
     logged('supersede', async (input) => {
+      if (
+        typeof input.oldObservationId !== 'number' ||
+        typeof input.newObservationId !== 'number'
+      ) {
+        return errorResult(OBSERVATION_REF_ERROR);
+      }
       const res = db
         .prepare('UPDATE observations SET superseded_by = ? WHERE id = ?')
         .run(input.newObservationId, input.oldObservationId);
@@ -184,33 +236,45 @@ export function registerTools(server: McpServer, db: Database.Database, dbPath: 
       description: 'Archive (default) or hard-delete entities or observations.',
       inputSchema: z.object({
         project: z.string().min(1),
-        entityIds: z.array(z.number().int()).optional(),
-        observationIds: z.array(z.number().int()).optional(),
+        entityIds: z.array(z.union([z.string().min(1), z.number().int()])).optional(),
+        observationIds: z.array(z.union([z.number().int(), z.string()])).optional(),
         hard: z.boolean().default(false),
       }),
     },
     logged('forget', async (input) => {
+      const entityIds: number[] = [];
+      for (const ref of (input.entityIds ?? []) as EntityRef[]) {
+        const resolved = resolveEntity(db, input.project, ref);
+        if (!resolved.ok) return errorResult(resolved.error);
+        if (!entityIds.includes(resolved.id)) entityIds.push(resolved.id);
+      }
+      const observationIds: number[] = [];
+      for (const ref of input.observationIds ?? []) {
+        if (typeof ref !== 'number') return errorResult(OBSERVATION_REF_ERROR);
+        observationIds.push(ref);
+      }
+
       let changed = 0;
-      if (input.entityIds?.length) {
+      if (entityIds.length) {
         if (input.hard) {
           const stmt = db.prepare('DELETE FROM entities WHERE id = ? AND project = ?');
-          for (const id of input.entityIds) changed += stmt.run(id, input.project).changes;
+          for (const id of entityIds) changed += stmt.run(id, input.project).changes;
         } else {
           const stmt = db.prepare(
             'UPDATE entities SET archived = 1, updated_at = ? WHERE id = ? AND project = ?',
           );
           const now = new Date().toISOString();
-          for (const id of input.entityIds) changed += stmt.run(now, id, input.project).changes;
+          for (const id of entityIds) changed += stmt.run(now, id, input.project).changes;
         }
       }
-      if (input.observationIds?.length) {
+      if (observationIds.length) {
         if (input.hard) {
           const stmt = db.prepare('DELETE FROM observations WHERE id = ?');
-          for (const id of input.observationIds) changed += stmt.run(id).changes;
+          for (const id of observationIds) changed += stmt.run(id).changes;
         } else {
           // observations have no archived flag; supersede self by null? Use ttl_at past.
           const stmt = db.prepare("UPDATE observations SET ttl_at = datetime('now') WHERE id = ?");
-          for (const id of input.observationIds) changed += stmt.run(id).changes;
+          for (const id of observationIds) changed += stmt.run(id).changes;
         }
       }
       return { content: [{ type: 'text', text: JSON.stringify({ changed }) }] };

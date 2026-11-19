@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { estimateTokens } from '../src/core/tokens.js';
-import { formatToolCall, logged } from '../src/mcp/log.js';
+import { formatRpcError, formatToolCall, logged } from '../src/mcp/log.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -76,5 +76,24 @@ describe('mcp call logging', () => {
     const line = String(write.mock.calls[0]?.[0]);
     expect(line).toContain(' error req={"project":"p"} res=');
     expect(line).toContain('db exploded');
+  });
+
+  it('formats JSON-RPC errors with argument keys and types only', () => {
+    const line = formatRpcError({
+      at: new Date('2026-11-19T10:00:00.000Z'),
+      code: -32602,
+      method: 'tools/call',
+      tool: 'relate',
+      args: { project: 'secret-project', from: 7, observations: ['secret text'] },
+      message: 'Input validation error: bad args',
+    });
+
+    expect(line).toBe(
+      '[mcp] 2026-11-19T10:00:00.000Z rpc_error code=-32602 method=tools/call tool=relate ' +
+        'args={project:string,from:number,observations:array[1]} ' +
+        'message="Input validation error: bad args"',
+    );
+    expect(line).not.toContain('secret-project');
+    expect(line).not.toContain('secret text');
   });
 });
