@@ -18,7 +18,7 @@ endif
 .PHONY: help init build up start down restart rebuild logs ps shell health dev test lint typecheck check db-shell backup restore stats mcp-add mcp-add-stdio mcp-inspect hooks-print clean nuke consolidate
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 init: ## Copy .env.example to .env if missing and run npm ci
 	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env"; fi
