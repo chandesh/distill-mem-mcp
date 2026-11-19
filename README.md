@@ -12,9 +12,11 @@ make mcp-add
 make hooks-print
 ```
 
-Then merge the printed hook snippet into `~/.claude/settings.json` or `.claude/settings.json`.
+Then merge the printed hook snippet into your agentic tool settings (for example Claude Code or OpenCode).
 
 ## Architecture
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for diagrams and flow.
 
 - Single Node process, HTTP on `127.0.0.1:8787` (container binds `0.0.0.0:8787`, published localhost-only).
 - SQLite (WAL) persisted in `./data` (bind-mounted).
@@ -50,6 +52,43 @@ docker run -i --rm -v $(pwd)/data:/data distill-mem-mcp --transport stdio
 - Port in use: set `DISTILL_PORT` in `.env`.
 - DB locked: stop container (`make down`) before editing.
 - Data persists in `./data`; `make nuke` deletes it (with confirmation).
+
+## Client setup examples
+
+### Claude Code
+```bash
+claude mcp add --transport http distill-mem http://127.0.0.1:8787/mcp
+```
+Merge `make hooks-print` output into `.claude/settings.json`.
+
+### OpenCode
+Add to `opencode.json`:
+```json
+{
+  "mcp": {
+    "distill-mem": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8787/mcp"
+    }
+  }
+}
+```
+
+### VS Code
+Add to `.vscode/mcp.json`:
+```json
+{
+  "servers": {
+    "distill-mem": {
+      "type": "http",
+      "url": "http://127.0.0.1:8787/mcp"
+    }
+  }
+}
+```
+
+### Antigravity
+Configure an MCP server entry with URL `http://127.0.0.1:8787/mcp` and transport `http`.
 
 ## Development
 
