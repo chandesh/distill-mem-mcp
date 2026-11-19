@@ -18,7 +18,7 @@ Then merge the printed hook snippet into your agentic tool settings (for example
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for diagrams and flow.
 
-- Single Node process, HTTP on `127.0.0.1:8787` (container binds `0.0.0.0:8787`, published localhost-only).
+- Single Node process, HTTP on `127.0.0.1:8181` (container binds `0.0.0.0:8181`, published localhost-only).
 - SQLite (WAL) persisted in `./data` (bind-mounted).
 - MCP endpoint at `/mcp`. REST: `/health`, `/ingest`, `/context`, `/stats`.
 
@@ -57,7 +57,7 @@ docker run -i --rm -v $(pwd)/data:/data distill-mem-mcp --transport stdio
 
 ### Claude Code
 ```bash
-claude mcp add --transport http distill-mem http://127.0.0.1:8787/mcp
+claude mcp add --transport http distill-mem http://127.0.0.1:8181/mcp
 ```
 Merge `make hooks-print` output into `.claude/settings.json`.
 
@@ -68,7 +68,7 @@ Add to `opencode.json`:
   "mcp": {
     "distill-mem": {
       "type": "remote",
-      "url": "http://127.0.0.1:8787/mcp"
+      "url": "http://127.0.0.1:8181/mcp"
     }
   }
 }
@@ -81,14 +81,14 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "distill-mem": {
       "type": "http",
-      "url": "http://127.0.0.1:8787/mcp"
+      "url": "http://127.0.0.1:8181/mcp"
     }
   }
 }
 ```
 
 ### Antigravity
-Configure an MCP server entry with URL `http://127.0.0.1:8787/mcp` and transport `http`.
+Configure an MCP server entry with URL `http://127.0.0.1:8181/mcp` and transport `http`.
 
 ## Development
 

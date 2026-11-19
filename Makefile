@@ -9,7 +9,7 @@ ifndef PORT
   ifdef DISTILL_PORT
     PORT := $(DISTILL_PORT)
   else
-    PORT := 8787
+    PORT := 8181
   endif
 endif
 

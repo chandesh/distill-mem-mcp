@@ -17,7 +17,7 @@ RUN npm prune --omit=dev
 # schema.sql already in dist/db via build
 RUN useradd -m -u 10001 distill && mkdir -p /data && chown -R distill:distill /data /app
 USER distill
-EXPOSE 8787
+EXPOSE 8181
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.DISTILL_PORT||'8181')+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "dist/server.js"]

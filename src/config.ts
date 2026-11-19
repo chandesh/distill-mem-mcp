@@ -6,7 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   DISTILL_TRANSPORT: z.enum(['http', 'stdio']).default('http'),
   DISTILL_HOST: z.string().default('127.0.0.1'),
-  DISTILL_PORT: z.coerce.number().int().min(1).max(65535).default(8787),
+  DISTILL_PORT: z.coerce.number().int().min(1).max(65535).default(8181),
   DISTILL_DB_PATH: z.string().min(1).default('/data/distill.db'),
   DISTILL_API_KEY: z.string().optional(),
   DISTILL_DEFAULT_BUDGET: z.coerce.number().int().min(100).max(100000).default(1200),
