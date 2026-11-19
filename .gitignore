@@ -10,3 +10,6 @@ coverage
 .DS_Store
 .scratch
 .codegraph
+
+# Agent plan docs stay local
+docs/superpowers/
