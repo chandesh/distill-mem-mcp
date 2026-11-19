@@ -6,7 +6,7 @@ DATA_DIR ?= ./data
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init build up down restart logs ps shell health dev test lint typecheck check db-shell backup restore stats mcp-add mcp-add-stdio mcp-inspect hooks-print clean nuke consolidate
+.PHONY: help init build up down restart rebuild logs ps shell health dev test lint typecheck check db-shell backup restore stats mcp-add mcp-add-stdio mcp-inspect hooks-print clean nuke consolidate
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -30,8 +30,12 @@ up: ## Start the stack (builds if needed) and wait for healthcheck
 down: ## Stop the stack, keep data
 	docker compose down
 
-restart: ## Restart the stack
+restart: ## Restart the container (no rebuild)
+	docker compose restart
+
+rebuild: ## Rebuild the image and recreate the container
 	$(MAKE) down
+	$(MAKE) build
 	$(MAKE) up
 
 logs: ## Follow container logs
